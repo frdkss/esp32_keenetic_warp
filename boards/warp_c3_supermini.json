@@ -1,0 +1,27 @@
+{
+  "name": "Project ESP32-C3 SuperMini (4 MB, SSD1306 OLED 72x40)",
+  "vendor": "Project local profile",
+  "url": "https://www.espressif.com/en/products/socs/esp32-c3",
+  "frameworks": ["arduino", "espidf"],
+  "build": {
+    "core": "esp32",
+    "mcu": "esp32c3",
+    "variant": "esp32c3",
+    "f_cpu": "160000000L",
+    "f_flash": "40000000L",
+    "flash_mode": "dio",
+    "partitions": "partitions.csv",
+    "extra_flags": "-DARDUINO_ESP32C3_DEV -DWARP_BOARD_C3_SUPERMINI=1",
+    "hwids": [["0x303A", "0x1001"]]
+  },
+  "upload": {
+    "flash_size": "4MB",
+    "maximum_ram_size": 327680,
+    "maximum_size": 4063232,
+    "protocol": "esptool",
+    "speed": 460800,
+    "require_upload_port": true
+  },
+  "debug": {"openocd_target": "esp32c3.cfg"},
+  "connectivity": ["wifi"]
+}

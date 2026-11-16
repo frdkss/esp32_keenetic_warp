@@ -1,0 +1,4 @@
+# Test firmware must never enable irreversible hardware protection.
+# CONFIG_SECURE_BOOT is not set
+# CONFIG_SECURE_FLASH_ENC_ENABLED is not set
+# CONFIG_NVS_ENCRYPTION is not set

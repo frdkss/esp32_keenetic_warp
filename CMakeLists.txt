@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.16)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(NOT WARP_PROFILE MATCHES "^(test|production)$")
+    message(FATAL_ERROR "Select a PlatformIO test or production environment")
+endif()
+set(SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.defaults;${CMAKE_CURRENT_LIST_DIR}/sdkconfig.${WARP_PROFILE}.defaults")
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(esp32_keenetic_warp VERSION 0.3.0)
