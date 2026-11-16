@@ -1,0 +1,7 @@
+# Name,     Type, SubType, Offset,   Size,      Flags
+# 0x00000..0x0EFFF: bootloader including Secure Boot v2 signature.
+# 0x0F000..0x0FFFF: partition table. One application, USB updates only.
+nvs,        data, nvs,     0x10000,  0x6000,
+nvs_keys,   data, nvs_keys,0x16000,  0x1000,    encrypted
+phy_init,   data, phy,     0x17000,  0x1000,
+factory,    app,  factory, 0x20000,  0x3E0000,

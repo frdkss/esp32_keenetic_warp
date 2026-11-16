@@ -1,0 +1,30 @@
+secret.txt
+service_secrets.h
+config.h
+
+# Local hardware evidence can contain device identifiers and flash/NVS secrets.
+.local/
+__pycache__/
+*.pyc
+
+# Build output and generated ESP-IDF configurations (keep *.defaults).
+.pio/
+sdkconfig.c3-*
+managed_components/
+build/
+# Provisioning material must stay local.
+keys/
+*.pem
+*.key
+*.bin
+*.elf
+*.map
+*.nvs
+*.nvs.csv
+*.secrets.json
+*.backup
+*.pfx
+*.p12
+*.warpkeys
+*.warpbackup
+.obsidian
