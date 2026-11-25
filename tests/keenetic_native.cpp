@@ -185,9 +185,15 @@ void longAuthenticateTest() {
 }
 void schemaTest() {
     keenetic::WarpState s;
-    CHECK(keenetic::parseIdentity(identity) == ErrorReason::None);
-    CHECK(keenetic::parseIdentity(R"({"hw_id":"KN-4010","title":"5.2"})") == ErrorReason::UnsupportedRouter);
-    CHECK(keenetic::parseIdentity(std::string(identity) + " garbage") == ErrorReason::InvalidJson);
+    keenetic::Identity id;
+    CHECK(keenetic::parseIdentity(identity, id) == ErrorReason::None && std::string(id.model.data()) == "KN-4010" && std::string(id.version.data()) == "5.1.8");
+    CHECK(keenetic::parseIdentity(R"({"hw_id":"KN-4010","title":"5.2"})", id) == ErrorReason::None);
+    CHECK(keenetic::parseIdentity(R"({"hw_id":"KN-9999","title":"6.0.1"})", id) == ErrorReason::None && std::string(id.model.data()) == "KN-9999");
+    CHECK(keenetic::parseIdentity(R"({"hw_id":"KN-4010","title":"5.0.9"})", id) == ErrorReason::UnsupportedRouter && std::string(id.version.data()) == "5.0.9");
+    CHECK(keenetic::parseIdentity(R"({"hw_id":"KN-4010","title":"4.3"})", id) == ErrorReason::UnsupportedRouter);
+    CHECK(keenetic::parseIdentity(R"({"title":"5.1.8"})", id) == ErrorReason::UnsupportedRouter);
+    CHECK(keenetic::parseIdentity(R"({"hw_id":"KN<x>","title":"5.1.8"})", id) == ErrorReason::UnsupportedRouter && !id.model[0]);
+    CHECK(keenetic::parseIdentity(std::string(identity) + " garbage", id) == ErrorReason::InvalidJson);
     CHECK(keenetic::parseState(state(true), "Wireguard7", s) == ErrorReason::None && s.valid && s.enabled && !s.connected);
     CHECK(keenetic::parseState(state(true), "Wireguard8", s) == ErrorReason::InterfaceNotFound && !s.valid);
     CHECK(keenetic::parseState(R"({"Wireguard7":{"id":"Wireguard8","state":"up"}})", "Wireguard7", s) == ErrorReason::InvalidResponse);
@@ -252,13 +258,14 @@ void authTlsTest() {
 }
 void blockedTest() {
     for (const auto error : {ErrorReason::PermissionDenied, ErrorReason::InterfaceNotFound, ErrorReason::RciFailure,
-                            ErrorReason::InvalidJson, ErrorReason::InvalidResponse}) {
+                            ErrorReason::InvalidJson, ErrorReason::InvalidResponse, ErrorReason::UnsupportedRouter}) {
         Fixture f; f.read(); CHECK(Monitor::set(f.client, false).error == ErrorReason::Pending);
         f.expect("GET /rci/show/interface ");
         if (error == ErrorReason::PermissionDenied) f.reply(403);
         else if (error == ErrorReason::InterfaceNotFound) f.reply(200, "{}");
         else if (error == ErrorReason::RciFailure) f.reply(200, R"({"status":[{"status":"error"}]})");
         else if (error == ErrorReason::InvalidJson) f.reply(200, "{");
+        else if (error == ErrorReason::UnsupportedRouter) f.reply(404);
         else f.reply(200, R"({"Wireguard7":{"id":"Wireguard7","type":"Ethernet"}})");
         CHECK(f.client.result().error == error && f.client.blocked());
         CHECK(Monitor::set(f.client, true).error == error); CHECK(f.transport.requests.size() == 5);
@@ -267,8 +274,15 @@ void blockedTest() {
     f.expect("GET /auth ");
     f.reply(401, "", "WWW-Authenticate: x-ndw2-interactive\r\nX-NDM-Realm: test\r\nX-NDM-Challenge: test\r\n");
     f.expect("POST /auth "); f.reply(200, "", "Set-Cookie: sid=authenticated\r\n");
-    f.expect("GET /rci/show/version "); f.reply(200, R"({"hw_id":"KN-9999","title":"5.1.8"})");
+    f.expect("GET /rci/show/version "); f.reply(200, R"({"hw_id":"KN-4010","title":"5.0.9"})");
     CHECK(f.client.blocked() && f.client.result().error == ErrorReason::UnsupportedRouter);
+    CHECK(std::string(f.client.identity().version.data()) == "5.0.9");
+    Fixture v; CHECK(v.client.readWarpState().error == ErrorReason::Pending);
+    v.expect("GET /auth ");
+    v.reply(401, "", "WWW-Authenticate: x-ndw2-interactive\r\nX-NDM-Realm: test\r\nX-NDM-Challenge: test\r\n");
+    v.expect("POST /auth "); v.reply(200, "", "Set-Cookie: sid=authenticated\r\n");
+    v.expect("GET /rci/show/version "); v.reply(404);
+    CHECK(v.client.blocked() && v.client.result().error == ErrorReason::UnsupportedRouter);
     for (const auto* body : {"{}", R"({"up":{"status":[{"status":"error"}]}})"}) {
         Fixture g; g.read(); CHECK(Monitor::set(g.client, false).error == ErrorReason::Pending);
         g.expect("GET /rci/show/interface "); g.reply(200, state(true));

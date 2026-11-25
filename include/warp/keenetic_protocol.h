@@ -4,7 +4,7 @@
 #include <cstddef>
 
 namespace warp::keenetic {
-// Only the profile observed in STAGE1 is supported. No command discovery/fallback.
+// KeeneticOS 5.1 and newer with the fixed RCI commands below. No command discovery/fallback.
 struct Settings {
     std::array<char, 16> address{};  // Explicit LAN IPv4; never resolve the TLS name.
     std::array<char, 254> tlsName{};
@@ -54,7 +54,12 @@ private:
     bool cr_{false}, hasLength_{false}, chunked_{false};
     ErrorReason error_{ErrorReason::None};
 };
-ErrorReason parseIdentity(std::string_view body);
+// Sanitized values from /rci/show/version, kept for diagnostics even when the router is unsupported.
+struct Identity {
+    std::array<char, 33> model{};    // hw_id, for example KN-4010; any model is accepted.
+    std::array<char, 33> version{};  // KeeneticOS title, for example 5.1.8.
+};
+ErrorReason parseIdentity(std::string_view body, Identity& identity);
 ErrorReason parseState(std::string_view body, std::string_view interfaceName, WarpState& state);
 ErrorReason parseCommand(std::string_view body);
 bool makeProof(std::string_view login, std::string_view password, std::string_view realm,

@@ -99,6 +99,33 @@ bool jsonText(JsonVariantConst value, std::string_view expected) {
     const auto text = value.as<JsonString>();
     return std::string_view(text.c_str(), text.size()) == expected;
 }
+// Router-supplied identity is printed to Serial, so accept only plain identifier characters.
+bool identifierText(JsonVariantConst value, std::array<char, 33>& out) {
+    if (!value.is<const char*>()) return false;
+    const auto text = value.as<JsonString>();
+    const std::string_view view(text.c_str(), text.size());
+    if (view.empty() || view.size() >= out.size()) return false;
+    for (unsigned char ch : view) {
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+            ch == '.' || ch == '-' || ch == '_')) return false;
+    }
+    out.fill(0);
+    std::copy(view.begin(), view.end(), out.begin());
+    return true;
+}
+bool number(std::string_view text, std::size_t& pos, unsigned& out) {
+    const auto start = pos;
+    out = 0;
+    while (pos < text.size() && text[pos] >= '0' && text[pos] <= '9' && pos - start < 4) out = out * 10 + (text[pos++] - '0');
+    return pos > start;
+}
+// KeeneticOS 5.1 and newer. The RCI title is the firmware version, for example 5.1.8.
+bool supportedVersion(std::string_view version) {
+    unsigned major = 0, minor = 0;
+    std::size_t pos = 0;
+    if (!number(version, pos, major) || pos >= version.size() || version[pos++] != '.' || !number(version, pos, minor)) return false;
+    return major > 5 || (major == 5 && minor >= 1);
+}
 }
 bool mergeCookies(std::array<char, 1025>& jar, std::string_view pairs, bool keepEmpty) {
     while (!pairs.empty()) {
@@ -239,12 +266,15 @@ void ResponseParser::eof() {
     if (phase_ == Phase::Body && !hasLength_) phase_ = Phase::Done;
     else if (!done()) fail(ErrorReason::InvalidResponse);
 }
-ErrorReason parseIdentity(std::string_view body) {
+ErrorReason parseIdentity(std::string_view body, Identity& identity) {
+    identity = {};
     Allocator allocator; JsonDocument d(&allocator);
     auto error = decode(body, d);
     if (error != ErrorReason::None) return error;
     if (rciError(d.as<JsonVariantConst>())) return ErrorReason::RciFailure;
-    return jsonText(d["hw_id"], "KN-4010") && jsonText(d["title"], "5.1.8") ? ErrorReason::None : ErrorReason::UnsupportedRouter;
+    // Model is informational only; compatibility depends on the firmware version.
+    if (!identifierText(d["hw_id"], identity.model) || !identifierText(d["title"], identity.version)) return ErrorReason::UnsupportedRouter;
+    return supportedVersion(identity.version.data()) ? ErrorReason::None : ErrorReason::UnsupportedRouter;
 }
 ErrorReason parseState(std::string_view body, std::string_view interface, WarpState& state) {
     state = {};

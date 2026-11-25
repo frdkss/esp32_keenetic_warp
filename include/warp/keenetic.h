@@ -23,6 +23,7 @@ public:
     bool blocked() const { return blocked_; }
     OperationResult result() const { return result_; }
     const keenetic::WarpState& state() const { return state_; }
+    const keenetic::Identity& identity() const { return identity_; }
     const CheckResult& diagnostic() const { return diagnostic_; }
 
 private:
@@ -37,6 +38,7 @@ private:
     KeeneticTransport* transport_{nullptr};
     keenetic::Settings settings_{};
     keenetic::WarpState state_{};
+    keenetic::Identity identity_{};
     std::array<char, 129> login_{};
     std::array<char, 257> password_{};
     std::array<char, 1025> cookie_{}, loginBody_{};

@@ -112,6 +112,8 @@ void KeeneticClient::tick(std::uint32_t now) {
     if (diagnostic_.error != ErrorReason::None) { finish(diagnostic_.error); return; }
     const int http = diagnostic_.httpStatus;
     if (http == 403) { finish(ErrorReason::PermissionDenied); return; }
+    // A missing RCI command means the firmware is not the one this client was verified against.
+    if (http == 404 && step_ != Step::Challenge && step_ != Step::Login) { finish(ErrorReason::UnsupportedRouter); return; }
     if (http == 401 && step_ != Step::Challenge) {
         if (step_ == Step::Login || renewed_) { finish(ErrorReason::AuthenticationFailed); return; }
         renewed_ = true;
@@ -144,7 +146,7 @@ void KeeneticClient::tick(std::uint32_t now) {
     }
     const std::string_view body(response->body.data(), response->bodySize);
     if (step_ == Step::Identity) {
-        const auto error = keenetic::parseIdentity(body);
+        const auto error = keenetic::parseIdentity(body, identity_);
         if (error != ErrorReason::None) { finish(error); return; }
         identified_ = true; step_ = resume_; return;
     }

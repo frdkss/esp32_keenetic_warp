@@ -49,7 +49,7 @@ class KeeneticTests(unittest.TestCase):
     def test_disable_enable_preflight_ack_and_state_verification(self): self.scenario("change")
     def test_expired_session_reauthorizes_once(self): self.scenario("expiry")
     def test_invalid_password_and_certificate_latch_commands(self): self.scenario("auth_tls")
-    def test_permissions_wrong_interface_unknown_profile_and_rci_error(self): self.scenario("blocked")
+    def test_permissions_wrong_interface_unsupported_firmware_and_rci_error(self): self.scenario("blocked")
     def test_post_state_mismatch_blocks_further_commands(self): self.scenario("mismatch")
     def test_wifi_and_time_loss_cancel_requests_and_forget_session(self): self.scenario("loss")
     def test_request_timeout_across_millis_wrap_and_busy(self): self.scenario("timeout")

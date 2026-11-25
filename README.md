@@ -21,7 +21,7 @@
 #### Требуется:
 
 - Windows 10 или выше
-- Роутер Keenetic/Netcraze с версией KeeneticOS 5.1.x
+- Роутер Keenetic/Netcraze с версией KeeneticOS 5.1.x и новее
 - Наличие Wireguard туннеля
 
 ---

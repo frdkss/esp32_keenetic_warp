@@ -112,9 +112,11 @@ void loop() {
     if (Serial && !warp::update::sending() && routerWasBusy && !router.busy()) {
         const auto& diagnostic = router.diagnostic();
         const auto& state = router.state();
-        Serial.printf("router reason=%s http=%d state_valid=%u enabled=%u link=%u connected=%u tls=%d cert=%d\n",
+        const auto& identity = router.identity();
+        Serial.printf("router reason=%s http=%d state_valid=%u enabled=%u link=%u connected=%u tls=%d cert=%d model=%s os=%s\n",
             warp::status::label(router.result().error), diagnostic.httpStatus, state.valid,
-            state.enabled, state.linkUp, state.connected, diagnostic.tlsCode, diagnostic.certificateFlags);
+            state.enabled, state.linkUp, state.connected, diagnostic.tlsCode, diagnostic.certificateFlags,
+            identity.model[0] ? identity.model.data() : "unknown", identity.version[0] ? identity.version.data() : "unknown");
     }
     if (!servicePaused) monitor.tick(now);
     const auto epoch = static_cast<std::time_t>(networkPlatform.epochSeconds());
