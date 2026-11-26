@@ -16,6 +16,7 @@ from test_stage4_security import IDF, ROOT, SERVICE_PYTHON, evidence, security
 
 sys.path.insert(0, str(ROOT / "scripts"))
 import secure_update as update
+import wifi_update
 
 
 def rom_info():
@@ -47,7 +48,39 @@ class FakeRom:
 
 @unittest.skipUnless(security and os.name == "nt" and SERVICE_PYTHON.is_file() and IDF.is_dir(),
                      "Windows with pinned security tools required")
-class UpdateTests(unittest.TestCase):
+class WifiUpdateTests(unittest.TestCase):
+    KEY = bytes(range(64))
+
+    def signed_reply(self, nonce, **changes):
+        import json as _json
+        reply = {"schema": 1, "nonce": nonce, "mac": "020000000001", "model": "esp32c3", "tls_port": 8443,
+                 "tls_sha256": "ab" * 32, "slot": 0x20000, "target": 0x200000, "target_size": 0x1E0000,
+                 "app_sha": "cd" * 32, "version_hex": "ef" * 32, **changes}
+        payload = _json.dumps(reply, separators=(",", ":")).encode()
+        tag = hmac.digest(self.KEY, wifi_update.DISCOVER_DOMAIN + payload, "sha256").hex().encode()
+        return b"WARP-HERE-1 " + payload + b" " + tag + b"\n"
+
+    def test_discovery_reply_is_bound_to_nonce_and_device_key(self):
+        nonce = "12" * 32
+        with patch.object(wifi_update, "device_key", return_value=self.KEY):
+            self.assertEqual(wifi_update.parse_reply(self.signed_reply(nonce), nonce, None)["target"], 0x200000)
+            self.assertIsNone(wifi_update.parse_reply(self.signed_reply("34" * 32), nonce, None))
+            tampered = self.signed_reply(nonce).replace(b'"target":2097152', b'"target":2097153')
+            self.assertIsNone(wifi_update.parse_reply(tampered, nonce, None))
+            self.assertIsNone(wifi_update.parse_reply(self.signed_reply(nonce, schema=2), nonce, None))
+
+    def test_tls_record_fingerprint_matches_the_certificate_it_carries(self):
+        from cryptography import x509
+        from cryptography.hazmat.primitives import serialization
+        record, fingerprint = wifi_update.tls_identity("020000000001")
+        self.assertEqual(len(record), 0x1000)
+        self.assertEqual(record[:8], b"WARPTLS1")
+        cert_size = int.from_bytes(record[8:12], "little")
+        certificate = x509.load_pem_x509_certificate(record[80:80 + cert_size])
+        der = certificate.public_bytes(serialization.Encoding.DER)
+        self.assertEqual(fingerprint, security.sha(der))
+        self.assertEqual(record[16:80].decode(), fingerprint)
+
     @classmethod
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix="warp-update-\u0436-")
@@ -66,7 +99,7 @@ class UpdateTests(unittest.TestCase):
     def proof(self, plan=None, **changes):
         plan = plan or self.plan
         source = (ROOT / ".pio/build/c3-production-no-oled/firmware.bin").read_bytes()
-        return {"schema": 1, "nonce": "12" * 32, "mac": self.bundle["identity"]["mac"],
+        return {"schema": 1, "nonce": "12" * 32, "mac": self.bundle["identity"]["mac"], "slot": 0x20000,
                 "revision": 4, "flash_bytes": 4194304, "secure": 1,
                 **{k: plan[k] for k in ("app_sha", "image_sha", "version_hex", "boot_digest", "table_sha")},
                 "cipher": self.cipher[:128].hex(), "plain_sha": security.sha(source[:128]),

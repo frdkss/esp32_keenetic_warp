@@ -123,13 +123,23 @@ PowerShell 5.1+ service actions:
     -ApplyConfiguration includes the current encrypted NVS in the signed package.
   .\service.ps1 -Action Update -KeyStore <directory> -PackageDirectory <directory> -Port COM4
     Requires a RUNNING protected app with the stage 9 USB probe. Authenticates
-    identity/keys and enters secure ROM. Default packages write only factory app.
+    identity/keys and enters secure ROM. Default packages write only the application slot
+    the device reports (ota_0 or ota_1); the OTA selector is left unchanged.
     Packages prepared with -ApplyConfiguration also apply encrypted NVS settings
     after authenticated maintenance lock, preserving the consumed schedule date.
     Keys/bootloader/table preserved. No eFuse writes or whole-chip erase.
     Verifies exact running image and a completed monitoring cycle afterwards.
     Optional -TimeoutSeconds 180 (15..900). On BOOT/RESET failure no retry:
     release BOOT and press RESET; never use a generic forced upload.
+  .\service.ps1 -Action DiscoverWifi -KeyStore <directory>
+    Broadcasts a signed LAN discovery request and lists authenticated devices
+    (MAC, slot, app digest). Sends no firmware and writes nothing to the device.
+  .\service.ps1 -Action WifiUpdate -KeyStore <directory> -PackageDirectory <directory>
+    Pushes a PrepareUpdate package to the device's inactive OTA slot over pinned HTTPS,
+    then requires authenticated discovery to report the new slot running. Packages
+    with configuration/migration are rejected here; use -Action Update over USB.
+    Optional -TimeoutSeconds 180 (15..900). Devices built before the OTA layout must
+    first be migrated once over USB.
 
 Configure/NewNvsKey use .local/service-tools/Scripts/python.exe by default.
 Bootstrap: python -m venv .local/service-tools

@@ -78,6 +78,7 @@ struct Measurements {
     std::array<char, 13> mac{};
     std::array<char, 65> digest{}, table{}, app{}, image{}, version{}, plain{};
     std::array<char, 257> cipher{};
+    std::uint32_t slot{0}, slotSize{0};
     bool valid{false}, attempted{false};
 } measured;
 
@@ -89,12 +90,16 @@ bool measure() {
     std::uint32_t size = 0;
     unsigned char mac[6]{}, digest[32]{}, cipher[128]{}, plain[128]{}, hash[32]{};
     const auto* running = esp_ota_get_running_partition();
+    // Either OTA slot is valid; both use the same size so the ROM writer geometry is shared.
+    const bool slotValid = running && running->size == 0x1E0000 &&
+        (running->address == 0x20000 || running->address == 0x200000);
     if (chip.model != CHIP_ESP32C3 || chip.revision != 4 || !protection() ||
         esp_flash_get_size(nullptr, &size) != ESP_OK || size != 4194304 ||
         esp_efuse_mac_get_default(mac) != ESP_OK ||
         esp_efuse_read_block(EFUSE_BLK_KEY1, digest, 0, 256) != ESP_OK ||
-        !running || running->address != 0x20000 || running->size != 0x3E0000 ||
-        esp_partition_get_sha256(running, hash) != ESP_OK) return false;
+        !slotValid || esp_partition_get_sha256(running, hash) != ESP_OK) return false;
+    measured.slot = running->address;
+    measured.slotSize = running->size;
     hex(hash, sizeof(hash), measured.image);
     if (esp_partition_read_raw(running, 0, cipher, sizeof(cipher)) != ESP_OK ||
         esp_partition_read(running, 0, plain, sizeof(plain)) != ESP_OK ||
@@ -135,12 +140,13 @@ void respond(bool ready, const CheckCycle& cycle, bool timeSynchronized, ErrorRe
                          hooks.acquire && hooks.release && hooks.scheduleDate;
     // Exact bytes are authenticated; JSON parsing is only done after verification.
     const auto length = std::snprintf(output.data(), output.size(),
-        "\nWARP9 {\"schema\":1,\"nonce\":\"%s\",\"mac\":\"%s\",\"revision\":4,\"flash_bytes\":4194304,"
+        "\nWARP9 {\"schema\":1,\"nonce\":\"%s\",\"mac\":\"%s\",\"slot\":%lu,\"revision\":4,\"flash_bytes\":4194304,"
         "\"secure\":1,\"boot_digest\":\"%s\",\"table_sha\":\"%s\",\"app_sha\":\"%s\",\"image_sha\":\"%s\",\"version_hex\":\"%s\","
         "\"cipher\":\"%s\",\"plain_sha\":\"%s\",\"cycle\":%lu,\"controls\":%u,\"targets\":%u,\"ready\":%u,\"internet\":%u,\"time\":%u,"
         "\"runtime_error\":%u,\"router_http\":%d,"
         "\"service\":%u,\"locked\":%u,\"challenge\":\"%s\",\"config_tag\":\"%s\",\"weekly_date\":%lu}",
-        probeNonce.data(), measured.mac.data(), measured.digest.data(), measured.table.data(), measured.app.data(), measured.image.data(),
+        probeNonce.data(), measured.mac.data(), static_cast<unsigned long>(measured.slot),
+        measured.digest.data(), measured.table.data(), measured.app.data(), measured.image.data(),
         measured.version.data(), measured.cipher.data(), measured.plain.data(),
         // sequence counts completed cycles, including while the next one runs.
         static_cast<unsigned long>(cycle.sequence), cycle.controlSummary.total,
@@ -206,6 +212,65 @@ bool lockRequest() {
 }
 }
 
+bool describeRunningSlot(SlotDescription& out) {
+    if (!measure()) return false;
+    std::memcpy(out.mac, measured.mac.data(), sizeof(out.mac));
+    std::memcpy(out.app, measured.app.data(), sizeof(out.app));
+    std::memcpy(out.version, measured.version.data(), sizeof(out.version));
+    out.address = measured.slot;
+    out.size = measured.slotSize;
+    return true;
+}
+
+bool deviceTag(const char* domain, const void* data, std::size_t size, char (&tag)[65]) {
+    if (!measure()) return false;
+    const auto* partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS_KEYS, "nvs_keys");
+    nvs_sec_cfg_t config{};
+    if (!partition || nvs_flash_read_security_cfg(partition, &config) != ESP_OK) {
+        mbedtls_platform_zeroize(&config, sizeof(config)); return false;
+    }
+    std::array<unsigned char, 64> key{};
+    std::memcpy(key.data(), config.eky, 32); std::memcpy(key.data() + 32, config.tky, 32);
+    unsigned char raw[32]{};
+    mbedtls_md_context_t md;
+    mbedtls_md_init(&md);
+    // Domain includes its terminating NUL, matching scripts/wifi_update.py.
+    const bool ok = mbedtls_md_setup(&md, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1) == 0 &&
+        mbedtls_md_hmac_starts(&md, key.data(), key.size()) == 0 &&
+        mbedtls_md_hmac_update(&md, reinterpret_cast<const unsigned char*>(domain), std::strlen(domain) + 1) == 0 &&
+        mbedtls_md_hmac_update(&md, static_cast<const unsigned char*>(data), size) == 0 &&
+        mbedtls_md_hmac_finish(&md, raw) == 0;
+    mbedtls_md_free(&md);
+    mbedtls_platform_zeroize(&config, sizeof(config));
+    mbedtls_platform_zeroize(key.data(), key.size());
+    if (ok) {
+        constexpr char digits[] = "0123456789abcdef";
+        for (unsigned i = 0; i < 32; ++i) { tag[i * 2] = digits[raw[i] >> 4]; tag[i * 2 + 1] = digits[raw[i] & 15]; }
+        tag[64] = '\0';
+    }
+    mbedtls_platform_zeroize(raw, sizeof(raw));
+    return ok;
+}
+
+bool deviceTagMatches(const char* domain, const void* data, std::size_t size, const char (&hexTag)[65]) {
+    char expected[65]{};
+    if (!deviceTag(domain, data, size, expected)) return false;
+    unsigned difference = 0;
+    for (unsigned i = 0; i < 65; ++i) difference |= static_cast<unsigned char>(expected[i] ^ hexTag[i]);
+    return difference == 0;
+}
+
+bool beginMaintenance() {
+    if (!measure() || !hooks.acquire || !hooks.release || locked) return false;
+    locked = hooks.acquire();
+    lockedAt = millis();
+    return locked;
+}
+
+void endMaintenance() {
+    if (locked) { hooks.release(); locked = false; }
+}
+
 void configureService(const ServiceHooks& value) { hooks = value; }
 bool sending() { return outputSent < outputSize; }
 void tick(bool runtimeReady, const CheckCycle& cycle, bool timeSynchronized, ErrorReason runtimeError, int routerHttp) {
@@ -246,5 +311,10 @@ namespace warp::update {
 void configureService(const ServiceHooks&) {}
 void tick(bool, const CheckCycle&, bool, ErrorReason, int) {}
 bool sending() { return false; }
+bool describeRunningSlot(SlotDescription&) { return false; }
+bool deviceTag(const char*, const void*, std::size_t, char (&)[65]) { return false; }
+bool deviceTagMatches(const char*, const void*, std::size_t, const char (&)[65]) { return false; }
+bool beginMaintenance() { return false; }
+void endMaintenance() {}
 }
 #endif

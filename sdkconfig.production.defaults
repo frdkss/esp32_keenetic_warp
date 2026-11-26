@@ -7,6 +7,8 @@ CONFIG_SECURE_FLASH_ENC_ENABLED=y
 CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE=y
 CONFIG_NVS_ENCRYPTION=y
 CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE=y
+# Wi-Fi OTA staging endpoint (esp_https_server, self-signed device certificate).
+CONFIG_ESP_HTTPS_SERVER_ENABLE=y
 # CONFIG_SECURE_BOOT_ENABLE_AGGRESSIVE_KEY_REVOKE is not set
 # Security exceptions must remain off; the bootloader disables pad/USB JTAG.
 # CONFIG_SECURE_BOOT_ALLOW_JTAG is not set

@@ -84,6 +84,34 @@ function Remove-ServiceWorkflowStage([string]$Stage, [string]$ParentDirectory) {
     if ([IO.Directory]::Exists($full)) { Remove-Item -LiteralPath $full -Recurse -Force }
 }
 
+function Invoke-ServiceMenuWifiUpdate([string]$Root, $State, $Paths) {
+    Clear-ServiceScreen 'SERVICE/WIFI'
+    Write-Host ('Порт: ' + $State.Port)
+    Write-ServiceProgress 'Проверка выбранной платы' 0 -StepsDone 0 -StepsTotal 5
+    $mac = Get-ServiceSelectedDevice $Root $State $Paths
+    if (-not $State.Devices.Contains($mac)) { Stop-ServiceOperation 'Сначала создайте ключи выбранной платы: пункт 3.' }
+    $record = $State.Devices[$mac]
+    $State.SelectedMac = $mac
+    Save-ServiceState $State
+    $tools = Resolve-ServiceTools $Root $Paths.ServicePython $Paths.Idf
+    $configuration = ConvertTo-ServiceConfiguration $State.Configuration
+    $environment = if ($configuration.OledEnabled) { 'c3-production-oled' } else { 'c3-production-no-oled' }
+    $tools | Add-Member -NotePropertyName Environment -NotePropertyValue $environment
+    Write-ServiceProgress 'Поиск микроконтроллера в сети' 15 -StepsDone 1 -StepsTotal 5
+    $found = Invoke-ServiceWifiDiscover $Root $tools $record.Vault 15
+    if (@($found.devices | Where-Object { $_.mac -eq $mac }).Count -eq 0) {
+        Stop-ServiceOperation 'Устройство выбранной платы не найдено в сети. Проверьте подключение к той же LAN.'
+    }
+    Write-ServiceProgress 'Сборка прошивки' 35 -StepsDone 2 -StepsTotal 5
+    [void](Invoke-ServiceProcess $Paths.BuildPython @('-m', 'platformio', 'run', '--project-dir', $Root, '-e', $environment) 'Сборка прошивки' 3600)
+    $package = Join-Path (Join-Path $Root '.local/service') ('wifi-' + [Guid]::NewGuid().ToString('N'))
+    Write-ServiceProgress 'Подготовка пакета прошивки' 60 -StepsDone 3 -StepsTotal 5
+    Invoke-ServiceUpdate $Root $tools $record.Vault $package -Prepare
+    Write-ServiceProgress 'Загрузка по Wi-Fi и проверка запуска' 80 -StepsDone 4 -StepsTotal 5
+    [void](Invoke-ServiceWifiUpdate $Root $tools $record.Vault $package 300)
+    Show-ServiceNotice 'Прошивка загружена по Wi-Fi, запуск нового слота подтверждён.' 'Green'
+}
+
 function Invoke-ServiceMenuFlash([string]$Root, $State, $Paths) {
     Clear-ServiceScreen 'SERVICE/FLASH'
     Write-Host ('Порт: ' + $State.Port)
@@ -155,4 +183,4 @@ function Invoke-ServiceMenuFlash([string]$Root, $State, $Paths) {
     finally { Remove-ServiceWorkflowStage $stage $base }
 }
 
-Export-ModuleMember -Function Invoke-ServiceMenuKeys, Invoke-ServiceMenuFlash
+Export-ModuleMember -Function Invoke-ServiceMenuKeys, Invoke-ServiceMenuFlash, Invoke-ServiceMenuWifiUpdate

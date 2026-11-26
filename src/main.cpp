@@ -11,6 +11,7 @@
 #include "warp/scheduler.h"
 #include "warp/status.h"
 #include "warp/update_probe.h"
+#include "warp/wifi_update.h"
 #include "warp/config_tag.h"
 #include "nvs_flash.h"
 #include "mbedtls/platform_util.h"
@@ -108,6 +109,7 @@ void loop() {
                        network.checks(), network.timeSynchronized(), monitor.status().reason,
                        router.diagnostic().httpStatus);
     network.tick(now);
+    warp::wifi_update::tick(network.wifiConnected());
     router.tick(now);
     if (Serial && !warp::update::sending() && routerWasBusy && !router.busy()) {
         const auto& diagnostic = router.diagnostic();

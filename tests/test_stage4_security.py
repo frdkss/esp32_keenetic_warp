@@ -161,7 +161,7 @@ class SecurityTests(unittest.TestCase):
             self.assertEqual(plan["backup_recovery"], "passed")
             self.assertEqual(plan["sign_verify_encrypt_roundtrip"], "passed")
             self.assertFalse(plan["provision_allowed"])
-            self.assertEqual([s["address"] for s in plan["segments"]], [0, 0xF000, 0x10000, 0x16000, 0x20000])
+            self.assertEqual([s["address"] for s in plan["segments"]], [0, 0xF000, 0x10000, 0x16000, 0x20000, 0x3E0000])
             self.assertEqual(len(bytes.fromhex(plan["secure_boot_digest_hex"])), 32)
             self.assertEqual((package / "nvs.encrypted.bin").read_bytes(), nvs.read_bytes())
             for path in package.iterdir():

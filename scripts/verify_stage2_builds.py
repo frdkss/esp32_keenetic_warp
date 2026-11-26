@@ -72,12 +72,15 @@ def verify(environment):
         partitions[name.split(b"\0", 1)[0].decode("ascii")] = (address, size, flags)
     assert partitions["nvs"] == (0x10000, 0x6000, 0)
     assert partitions["nvs_keys"] == (0x16000, 0x1000, 1)
-    assert partitions["factory"] == (0x20000, 0x3E0000, 0)
-    assert len(firmware) <= 0x3E0000
+    assert partitions["otadata"] == (0x18000, 0x2000, 0)
+    assert partitions["ota_0"] == (0x20000, 0x1E0000, 0)
+    assert partitions["ota_1"] == (0x200000, 0x1E0000, 0)
+    assert partitions["wifi_tls"] == (0x3E0000, 0x1000, 0)
+    assert len(firmware) <= 0x1E0000
     assert len(bootloader) <= 0xF000
     if protected:
         assert ((len(bootloader) + 4095) // 4096 + 1) * 4096 <= 0xF000, "No room for boot signature"
-        assert ((len(firmware) + 4095) // 4096 + 1) * 4096 <= 0x3E0000, "No room for app signature"
+        assert ((len(firmware) + 4095) // 4096 + 1) * 4096 <= 0x1E0000, "No room for app signature"
         for marker in (b"TEST_ONLY_NO_WIFI", b"TEST_ONLY_WIFI_PASSWORD",
                        b"TEST_ONLY_ROUTER_LOGIN", b"TEST_ONLY_ROUTER_PASSWORD"):
             assert marker not in firmware, "Test credentials found in protected image"

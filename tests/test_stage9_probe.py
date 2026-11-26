@@ -137,7 +137,7 @@ inline void esp_chip_info(esp_chip_info_t* p) { *p = {}; }
 inline int esp_flash_get_size(void*, std::uint32_t* p) { *p = 4194304; return 0; }
 inline int esp_efuse_mac_get_default(unsigned char* p) { std::memset(p, 0x12, 6); return 0; }
 inline int esp_efuse_read_block(esp_efuse_block_t, void* p, int, int) { std::memset(p, 0x23, 32); return 0; }
-struct esp_partition_t { unsigned address = 0x20000, size = 0x3E0000; };
+struct esp_partition_t { unsigned address = 0x20000, size = 0x1E0000; };
 inline esp_partition_t fakePartition;
 inline const esp_partition_t* esp_ota_get_running_partition() { return &fakePartition; }
 inline int esp_partition_get_sha256(const esp_partition_t*, unsigned char* p) { std::memset(p, 0x34, 32); return 0; }

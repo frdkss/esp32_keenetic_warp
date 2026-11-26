@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 [CmdletBinding()]
 param(
-    [ValidateSet('Menu', 'Configure', 'Inspect', 'InspectProtection', 'NewNvsKey', 'NewDeviceKeys', 'BackupKeys', 'RestoreKeys', 'PrepareProvision', 'Provision', 'VerifyProvision', 'PrepareUpdate', 'Update', 'Help')]
+    [ValidateSet('Menu', 'Configure', 'Inspect', 'InspectProtection', 'NewNvsKey', 'NewDeviceKeys', 'BackupKeys', 'RestoreKeys', 'PrepareProvision', 'Provision', 'VerifyProvision', 'PrepareUpdate', 'Update', 'DiscoverWifi', 'WifiUpdate', 'Help')]
     [string]$Action = 'Menu',
     [string]$Port,
     [string]$NvsKeyFile,
@@ -124,6 +124,18 @@ try {
             if (-not $KeyStore -or -not $PackageDirectory -or -not $Port) { Stop-ServiceOperation 'Update requires -KeyStore, -PackageDirectory and -Port. No device operation was attempted.' }
             $tools = Resolve-ServiceTools $PSScriptRoot $PythonPath $IdfPath
             Invoke-ServiceUpdate $PSScriptRoot $tools $KeyStore $PackageDirectory $Port $TimeoutSeconds
+        }
+        'DiscoverWifi' {
+            if (-not $KeyStore) { Stop-ServiceOperation 'DiscoverWifi requires -KeyStore. No network request was sent.' }
+            $tools = Resolve-ServiceTools $PSScriptRoot $PythonPath $IdfPath
+            $found = Invoke-ServiceWifiDiscover $PSScriptRoot $tools $KeyStore 15
+            Write-Host (ConvertTo-Json -InputObject $found -Depth 5 -Compress)
+        }
+        'WifiUpdate' {
+            if (-not $KeyStore -or -not $PackageDirectory) { Stop-ServiceOperation 'WifiUpdate requires -KeyStore and -PackageDirectory. No network operation was attempted.' }
+            $tools = Resolve-ServiceTools $PSScriptRoot $PythonPath $IdfPath
+            [void](Invoke-ServiceWifiUpdate $PSScriptRoot $tools $KeyStore $PackageDirectory $TimeoutSeconds)
+            Write-Host 'Wi-Fi update staged and the new slot was verified by authenticated discovery.'
         }
     }
 }

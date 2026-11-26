@@ -378,6 +378,7 @@ function Show-ServiceHomeScreen($State, $Dependencies) {
     Write-Host '3. Создать ключ устройства'
     Write-Host ''
     Write-Host '4. Загрузить прошивку на микроконтроллер'
+    Write-Host '5. Обновить прошивку по Wi-Fi (поиск в сети)'
     Write-Host ''
     Write-ServiceOption '0. Выход' 'Red'
     Write-Host ''
@@ -418,6 +419,12 @@ function Start-ServiceMenu([string]$Root) {
                         $operation = 'flash'
                         if (-not $dependencies.Ready) { Stop-ServiceOperation 'Сначала установите зависимости: пункт 1.' }
                         Invoke-ServiceMenuFlash $Root $state $dependencies.Paths
+                        Write-ServiceOperationLog $operation $true
+                    }
+                    '5' {
+                        $operation = 'wifi'
+                        if (-not $dependencies.Ready) { Stop-ServiceOperation 'Сначала установите зависимости: пункт 1.' }
+                        Invoke-ServiceMenuWifiUpdate $Root $state $dependencies.Paths
                         Write-ServiceOperationLog $operation $true
                     }
                     '0' { return }

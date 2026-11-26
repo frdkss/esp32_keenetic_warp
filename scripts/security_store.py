@@ -448,7 +448,10 @@ def verify_partition_table(path, idf):
         expected = [("nvs", 1, 2, 0x10000, 0x6000, False),
                     ("nvs_keys", 1, 4, 0x16000, 0x1000, True),
                     ("phy_init", 1, 1, 0x17000, 0x1000, False),
-                    ("factory", 0, 0, 0x20000, 0x3E0000, False)]
+                    ("otadata", 1, 0, 0x18000, 0x2000, False),
+                    ("ota_0", 0, 0x10, 0x20000, 0x1E0000, False),
+                    ("ota_1", 0, 0x11, 0x200000, 0x1E0000, False),
+                    ("wifi_tls", 1, 0x40, 0x3E0000, 0x1000, False)]
         if [(p.name, p.type, p.subtype, p.offset, p.size, p.encrypted) for p in table] != expected:
             raise ValueError("Unexpected binary partition table")
     finally:
@@ -560,14 +563,21 @@ def prepare(root, vault, backup, password, evidence, output, environment, idf, n
         official(("digest-sbv2-public-key", "--keyfile", work / "public.pem", "--output", work / "digest.bin"))
         nvs_check = verify_nvs(nvs, work / "nvs-key.bin", work, idf)
         package = private_directory(work / "package")
+        import wifi_update
         segments = []
         sources = (("bootloader", build / "bootloader.bin", 0, 0xF000, True),
                    ("partitions", build / "partitions.bin", 0xF000, 0x1000, False),
                    ("nvs_keys", work / "nvs-key.bin", 0x16000, 0x1000, False),
-                   ("firmware", build / "firmware.bin", 0x20000, 0x3E0000, True))
+                   ("firmware", build / "firmware.bin", 0x20000, 0x1E0000, True),
+                   ("tls", None, 0x3E0000, 0x1000, False))
+        tls_fingerprint = None
         for name, source, address, limit, sign in sources:
             plain = work / (name + ".plain.bin")
-            if sign:
+            if name == "tls":
+                # Device-bound Wi-Fi identity: generated once, pinned by the signed plan fingerprint.
+                record, tls_fingerprint = wifi_update.tls_identity(evidence["identity"]["mac"])
+                plain.write_bytes(record)
+            elif sign:
                 verify_image(source, limit)
                 official(("sign-data", "--version", "2", "--keyfile", work / "signing.pem",
                           "--output", plain, source))
@@ -595,6 +605,7 @@ def prepare(root, vault, backup, password, evidence, output, environment, idf, n
                 "secure_boot_digest_hex": (work / "digest.bin").read_bytes().hex(),
                 "backup_sha256": sha(Path(backup).read_bytes()), "backup_recovery": "passed",
                 "sign_verify_encrypt_roundtrip": "passed", "segments": sorted(segments, key=lambda s: s["address"]),
+                "tls_fingerprint": tls_fingerprint,
                 "efuse_plan": {"BLOCK_KEY0": "XTS_AES_128_KEY; read/write protected",
                                "BLOCK_KEY1": "SECURE_BOOT_DIGEST0; write protected; MUST remain readable",
                                "SPI_BOOT_CRYPT_CNT": "0b111; write protected (Release)",

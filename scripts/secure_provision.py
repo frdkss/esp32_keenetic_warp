@@ -24,7 +24,7 @@ import service_events as events
 
 LAYOUT = {"bootloader": (0, 0xF000), "partitions": (0xF000, 0x1000),
           "nvs": (0x10000, 0x6000), "nvs_keys": (0x16000, 0x1000),
-          "firmware": (0x20000, 0x3E0000)}
+          "firmware": (0x20000, 0x1E0000), "tls": (0x3E0000, 0x1000)}
 SECURITY_BITS = {
     "SPI_BOOT_CRYPT_CNT": 7, "SECURE_BOOT_EN": 1, "DIS_PAD_JTAG": 1,
     "DIS_USB_JTAG": 1, "SOFT_DIS_JTAG": 7, "DIS_DOWNLOAD_MANUAL_ENCRYPT": 1,
@@ -121,6 +121,9 @@ def inspect_package(package, bundle, work, idf, backup_sha=None):
     store.verify_partition_table(work / "table.bin", idf)
     if update.decrypt(segments["nvs_keys"], work, 0x16000) != store.raw(bundle, "nvs"):
         update.fail("NVS key segment differs from recovered keys.")
+    tls_record = update.decrypt(segments["tls"], work, LAYOUT["tls"][0])
+    if (tls_record[:8] != b"WARPTLS1" or tls_record[16:80].decode("ascii", "replace") != plan.get("tls_fingerprint")):
+        update.fail("Wi-Fi TLS identity does not match the signed plan.")
     (work / "nvs-key.bin").write_bytes(store.raw(bundle, "nvs"))
     frozen_nvs = work / "configuration.bin"
     frozen_nvs.write_bytes(segments["nvs"])
