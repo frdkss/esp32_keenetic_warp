@@ -69,6 +69,40 @@ class WifiUpdateTests(unittest.TestCase):
             self.assertIsNone(wifi_update.parse_reply(tampered, nonce, None))
             self.assertIsNone(wifi_update.parse_reply(self.signed_reply(nonce, schema=2), nonce, None))
 
+    def test_upload_refuses_unpinned_certificate_before_sending_firmware(self):
+        connection = Mock()
+        connection.sock.getpeercert.return_value = b"\x30\x00"  # Not the authenticated certificate.
+        reply = {"address": "192.0.2.7", "tls_port": 8443, "tls_sha256": "ab" * 32,
+                 "target": 0x200000, "target_size": 0x1E0000}
+        with patch.object(wifi_update.http.client, "HTTPSConnection", return_value=connection):
+            with self.assertRaises(update.UpdateError):
+                wifi_update.upload(reply, {"identity": {"mac": "020000000001"}}, b"\x00" * 4096, 5)
+        connection.request.assert_not_called()
+
+    def test_upload_tag_binds_challenge_target_length_and_digest(self):
+        der = b"\x30\x03\x02\x01\x01"
+        pinned = security.sha(der)
+        hello = Mock(); hello.read.return_value = json.dumps(
+            {"challenge": "34" * 32, "target": 0x200000, "target_size": 0x1E0000}).encode()
+        posted = Mock(); posted.status = 200
+        posted.read.return_value = json.dumps({"result": "staged", "target": 0x200000}).encode()
+        connection = Mock()
+        connection.sock.getpeercert.return_value = der
+        connection.getresponse.side_effect = [hello, posted]
+        image = b"\x5a" * 4096
+        reply = {"address": "192.0.2.7", "tls_port": 8443, "tls_sha256": pinned,
+                 "target": 0x200000, "target_size": 0x1E0000}
+        with patch.object(wifi_update.http.client, "HTTPSConnection", return_value=connection), \
+                patch.object(wifi_update, "device_key", return_value=self.KEY):
+            wifi_update.upload(reply, None, image, 5)
+        method, path = connection.request.call_args_list[1].args
+        headers = connection.request.call_args_list[1].kwargs["headers"]
+        self.assertEqual((method, path), ("POST", "/api/v1/firmware"))
+        message = f"{'34' * 32}\n{0x200000}\n{len(image)}\n{security.sha(image)}\n".encode()
+        expected = hmac.digest(self.KEY, wifi_update.UPLOAD_DOMAIN + message, "sha256").hex()
+        self.assertEqual(headers["X-WARP-Tag"], expected)
+        self.assertEqual(headers["X-WARP-Target"], str(0x200000))
+
     def test_tls_record_fingerprint_matches_the_certificate_it_carries(self):
         from cryptography import x509
         from cryptography.hazmat.primitives import serialization
